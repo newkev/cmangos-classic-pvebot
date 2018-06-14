@@ -2910,7 +2910,7 @@ void ObjectMgr::LoadGroups()
     // -- loading groups --
     uint32 count = 0;
     //                                                    0         1              2           3           4              5      6      7      8      9      10     11     12     13      14          15
-    QueryResult* result = CharacterDatabase.Query("SELECT mainTank, mainAssistant, lootMethod, looterGuid, lootThreshold, icon1, icon2, icon3, icon4, icon5, icon6, icon7, icon8, isRaid, leaderGuid, groupId FROM groups");
+    QueryResult* result = CharacterDatabase.Query("SELECT mainTank, mainAssistant, lootMethod, looterGuid, lootThreshold, icon1, icon2, icon3, icon4, icon5, icon6, icon7, icon8, isRaid, leaderGuid, groupId FROM `groups`");
 
     if (!result)
     {
@@ -3017,7 +3017,7 @@ void ObjectMgr::LoadGroups()
                  " groups.groupId, "
                  // 7
                  "instance.encountersMask "
-                 "FROM group_instance LEFT JOIN instance ON instance = id LEFT JOIN groups ON groups.leaderGUID = group_instance.leaderGUID ORDER BY leaderGuid"
+                 "FROM group_instance LEFT JOIN instance ON instance = id LEFT JOIN `groups` ON groups.leaderGUID = group_instance.leaderGUID ORDER BY leaderGuid"
              );
 
     if (!result)
@@ -4939,98 +4939,98 @@ void ObjectMgr::LoadTavernAreaTriggers()
     sLog.outString();
 }
 
-bool ObjectMgr::AddTaxiShortcut(TaxiPathEntry const* path, uint32 lengthTakeoff, uint32 lengthLanding)
-{
-    if (!path)
-        return false;
-
-    auto shortcut = m_TaxiShortcutMap.find(path->ID);
-    if (shortcut == m_TaxiShortcutMap.end())
-    {
-        TaxiShortcutData data;
-        data.lengthTakeoff = lengthTakeoff;
-        data.lengthLanding = lengthLanding;
-        m_TaxiShortcutMap.insert(TaxiShortcutMap::value_type(path->ID, data));
-        return true;
-    }
-    // Already exists
-    return false;
-}
-
-bool ObjectMgr::GetTaxiShortcut(uint32 pathid, TaxiShortcutData& data)
-{
-    auto shortcut = m_TaxiShortcutMap.find(pathid);
-
-    // No record for this path
-    if (shortcut == m_TaxiShortcutMap.end())
-        return false;
-
-    data = (*shortcut).second;
-    return true;
-}
-
-void ObjectMgr::LoadTaxiShortcuts()
-{
-    m_TaxiShortcutMap.clear();                              // need for reload case
-
-    QueryResult* result = WorldDatabase.Query("SELECT pathid,takeoff,landing FROM taxi_shortcuts");
-
-    uint32 count = 0;
-
-    if (!result)
-    {
-        BarGoLink bar(1);
-        bar.step();
-        sLog.outString(">> Loaded %u taxi shortcuts", count);
-        sLog.outString();
-        return;
-    }
-
-    BarGoLink bar(int(result->GetRowCount()));
-
-    do
-    {
-        ++count;
-        bar.step();
-
-        Field* fields = result->Fetch();
-
-        uint32 pathid = fields[0].GetUInt32();
-        uint32 takeoff = fields[1].GetUInt32();
-        uint32 landing = fields[2].GetUInt32();
-
-        TaxiPathEntry const* path = sTaxiPathStore.LookupEntry(pathid);
-        if (!path)
-        {
-            sLog.outErrorDb("Table `taxi_shortcuts` has a record for non-existent taxi path id %u, skipped.", pathid);
-            continue;
-        }
-
-        if (!takeoff && !landing)
-        {
-            sLog.outErrorDb("Table `taxi_shortcuts` has a useless record for taxi path id %u: takeoff and landing lengths are missing, skipped.", pathid);
-            continue;
-        }
-
-        TaxiPathNodeList const& waypoints = sTaxiPathNodesByPath[pathid];
-        const size_t bounds = waypoints.size();
-
-        if (takeoff >= bounds || landing >= bounds)
-        {
-            sLog.outErrorDb("Table `taxi_shortcuts` has a malformed record for taxi path id %u: lengths are out of bounds, skipped.", pathid);
-            continue;
-        }
-
-        if (!AddTaxiShortcut(path, takeoff, landing))
-            sLog.outErrorDb("Table `taxi_shortcuts` has a duplicate record for taxi path id %u, skipped.", pathid);
-    }
-    while (result->NextRow());
-
-    delete result;
-
-    sLog.outString(">> Loaded %u taxi shortcuts", count);
-    sLog.outString();
-}
+-bool ObjectMgr::AddTaxiShortcut(TaxiPathEntry const* path, uint32 lengthTakeoff, uint32 lengthLanding)
+-{
+-    if (!path)
+-        return false;
+-
+-    auto shortcut = m_TaxiShortcutMap.find(path->ID);
+-    if (shortcut == m_TaxiShortcutMap.end())
+-    {
+-        TaxiShortcutData data;
+-        data.lengthTakeoff = lengthTakeoff;
+-        data.lengthLanding = lengthLanding;
+-        m_TaxiShortcutMap.insert(TaxiShortcutMap::value_type(path->ID, data));
+-        return true;
+-    }
+-    // Already exists
+-    return false;
+-}
+-
+-bool ObjectMgr::GetTaxiShortcut(uint32 pathid, TaxiShortcutData& data)
+-{
+-    auto shortcut = m_TaxiShortcutMap.find(pathid);
+-
+-    // No record for this path
+-    if (shortcut == m_TaxiShortcutMap.end())
+-        return false;
+-
+-    data = (*shortcut).second;
+-    return true;
+-}
+-
+-void ObjectMgr::LoadTaxiShortcuts()
+-{
+-    m_TaxiShortcutMap.clear();                              // need for reload case
+-
+-    QueryResult* result = WorldDatabase.Query("SELECT pathid,takeoff,landing FROM taxi_shortcuts");
+-
+-    uint32 count = 0;
+-
+-    if (!result)
+-    {
+-        BarGoLink bar(1);
+-        bar.step();
+-        sLog.outString(">> Loaded %u taxi shortcuts", count);
+-        sLog.outString();
+-        return;
+-    }
+-
+-    BarGoLink bar(int(result->GetRowCount()));
+-
+-    do
+-    {
+-        ++count;
+-        bar.step();
+-
+-        Field* fields = result->Fetch();
+-
+-        uint32 pathid = fields[0].GetUInt32();
+-        uint32 takeoff = fields[1].GetUInt32();
+-        uint32 landing = fields[2].GetUInt32();
+-
+-        TaxiPathEntry const* path = sTaxiPathStore.LookupEntry(pathid);
+-        if (!path)
+-        {
+-            sLog.outErrorDb("Table `taxi_shortcuts` has a record for non-existent taxi path id %u, skipped.", pathid);
+-            continue;
+-        }
+-
+-        if (!takeoff && !landing)
+-        {
+-            sLog.outErrorDb("Table `taxi_shortcuts` has a useless record for taxi path id %u: takeoff and landing lengths are missing, skipped.", pathid);
+-            continue;
+-        }
+-
+-        TaxiPathNodeList const& waypoints = sTaxiPathNodesByPath[pathid];
+-        const size_t bounds = waypoints.size();
+-
+-        if (takeoff >= bounds || landing >= bounds)
+-        {
+-            sLog.outErrorDb("Table `taxi_shortcuts` has a malformed record for taxi path id %u: lengths are out of bounds, skipped.", pathid);
+-            continue;
+-        }
+-
+-        if (!AddTaxiShortcut(path, takeoff, landing))
+-            sLog.outErrorDb("Table `taxi_shortcuts` has a duplicate record for taxi path id %u, skipped.", pathid);
+-    }
+-    while (result->NextRow());
+-
+-    delete result;
+-
+-    sLog.outString(">> Loaded %u taxi shortcuts", count);
+-    sLog.outString();
+-}
 
 uint32 ObjectMgr::GetNearestTaxiNode(float x, float y, float z, uint32 mapid, Team team) const
 {
@@ -5563,7 +5563,7 @@ void ObjectMgr::PackGroupIds()
     // all valid ids are in the instance table
     // any associations to ids not in this table are assumed to be
     // cleaned already in CleanupInstances
-    QueryResult* result = CharacterDatabase.Query("SELECT groupId FROM groups");
+	QueryResult* result = CharacterDatabase.Query("SELECT groupId FROM `groups`");
     if (result)
     {
         do
@@ -5575,7 +5575,7 @@ void ObjectMgr::PackGroupIds()
             if (id == 0)
             {
                 CharacterDatabase.BeginTransaction();
-                CharacterDatabase.PExecute("DELETE FROM groups WHERE groupId = '%u'", id);
+                CharacterDatabase.PExecute("DELETE FROM `groups` WHERE groupId = '%u'", id);
                 CharacterDatabase.PExecute("DELETE FROM group_member WHERE groupId = '%u'", id);
                 CharacterDatabase.CommitTransaction();
                 continue;
@@ -5598,7 +5598,7 @@ void ObjectMgr::PackGroupIds()
         {
             // remap group id
             CharacterDatabase.BeginTransaction();
-            CharacterDatabase.PExecute("UPDATE groups SET groupId = '%u' WHERE groupId = '%u'", groupId, *i);
+            CharacterDatabase.PExecute("UPDATE `groups` SET groupId = '%u' WHERE groupId = '%u'", groupId, *i);
             CharacterDatabase.PExecute("UPDATE group_member SET groupId = '%u' WHERE groupId = '%u'", groupId, *i);
             CharacterDatabase.CommitTransaction();
         }
@@ -5685,7 +5685,7 @@ void ObjectMgr::SetHighestGuids()
         delete result;
     }
 
-    result = CharacterDatabase.Query("SELECT MAX(groupId) FROM groups");
+    result = CharacterDatabase.Query("SELECT MAX(groupId) FROM `groups`");
     if (result)
     {
         m_GroupIds.Set((*result)[0].GetUInt32() + 1);

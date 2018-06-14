@@ -228,6 +228,7 @@ class Group
                 SendUpdate();
         }
 
+		ObjectGuid GetTargetIcon(uint8 id);
         void SetTargetIcon(uint8 id, ObjectGuid targetGuid);
         uint16 InInstance();
         bool InCombatToInstance(uint32 instanceId);
