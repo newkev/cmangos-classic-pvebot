@@ -323,23 +323,32 @@ uint32 PlayerbotAI::initSpell(uint32 spellId)
 
     uint32 next = 0;
     SpellChainMapNext const& nextMap = sSpellMgr.GetSpellChainNext();
+
     for (SpellChainMapNext::const_iterator itr = nextMap.lower_bound(spellId); itr != nextMap.upper_bound(spellId); ++itr)
     {
         SpellChainNode const* node = sSpellMgr.GetSpellChainNode(itr->second);
+
         // If next spell is a requirement for this one then skip it
         if (node->req == spellId)
             continue;
         if (node->prev == spellId)
         {
+
             next = initSpell(itr->second);
             break;
         }
     }
+	
+
+
     if (next == 0)
     {
+
+
         const SpellEntry* const pSpellInfo = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
         if (!pSpellInfo)
             return spellId;
+
 
         DEBUG_LOG("[PlayerbotAI]: initSpell - Playerbot spell init: %s is %u", pSpellInfo->SpellName[0], spellId);
 
@@ -688,6 +697,9 @@ bool PlayerbotAI::IsItemUseful(uint32 itemid)
 
 void PlayerbotAI::ReloadAI()
 {
+	m_MinRange = 10;
+	m_IconToWatch = 6; //set to cross icon (first target, second target will be skull)
+	m_Tasktype = TASK_NORMAL;
     switch (m_bot->getClass())
     {
         case CLASS_PRIEST:
@@ -2501,6 +2513,8 @@ bool PlayerbotAI::GroupTankHoldsAggro()
     return true;
 }
 
+
+
 // Wrapper for the UpdateAI cast subfunction
 // Each bot class neutralize function will return a spellId
 // depending on the creatureType of the target
@@ -2538,6 +2552,15 @@ bool PlayerbotAI::CastNeutralize()
         default:
             return false;
     }
+
+	if (pTarget && !In_Reach(pTarget, m_spellIdCommand))
+	{
+		InterruptCurrentCastingSpell();
+		TellMaster("Walking to 25m range to neutralize");
+		m_bot->GetMotionMaster()->MoveFollow(pTarget, 25.0f, m_bot->GetOrientation());
+		//return RETURN_CONTINUE;
+	}
+
 
     // A spellId was found
     if (m_spellIdCommand != 0)
@@ -3845,6 +3868,7 @@ void PlayerbotAI::UpdateAI(const uint32 /*p_time*/)
             ClearCombatOrder(ORDERS_TEMP);
         }
         SetState(BOTSTATE_LOOTING);
+
         m_attackerInfo.clear();
         if (HasCollectFlag(COLLECT_FLAG_COMBAT))
             m_lootTargets.unique();
@@ -4026,7 +4050,7 @@ bool PlayerbotAI::CastSpell(uint32 spellId)
         return false;
 
     // for AI debug purpose: uncomment the following line and bot will tell Master of every spell they attempt to cast
-    // TellMaster("I'm trying to cast %s (spellID %u)", pSpellInfo->SpellName[0], spellId);
+    //TellMaster("I'm trying to cast %s (spellID %u)", pSpellInfo->SpellName[0], spellId);
 
     // Power check (stolen from: CreatureAI.cpp - CreatureAI::CanCastSpell)
     if (m_bot->GetPower((Powers)pSpellInfo->powerType) < Spell::CalculatePowerCost(pSpellInfo, m_bot))
@@ -6148,6 +6172,261 @@ void PlayerbotAI::GetTaxi(ObjectGuid guid, BotTaxiNode& nodes)
     }
 }
 
+
+/**
+* FleeFromAoEIfCan()
+* return boolean Check if the bot can move out of the hostile AoE spell then try to find a proper destination and move towards it
+*                The AoE is assumed to be centered on the current bot location (this is the case most of the time)
+*
+* params: spellId uint32 the spell ID of the hostile AoE the bot is supposed to move from. It is used to find the radius of the AoE spell
+* params: pTarget Unit* the creature or gameobject the bot will use to define one of the prefered direction in which to flee
+*
+* return true if bot has found a proper destination, false if none was found
+*/
+bool PlayerbotAI::FleeFromAoEIfCan(uint32 spellId, Unit* pTarget)
+{
+
+	if (!spellId) return false;
+
+	// Step 1: Get radius from hostile AoE spell
+	float radius = 0;
+	SpellEntry const* spellproto = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+	if (spellproto)
+		radius = GetSpellRadius(sSpellRadiusStore.LookupEntry(spellproto->EffectRadiusIndex[EFFECT_INDEX_0]));
+
+	// Step 2: Get current bot position to move from it
+	float curr_x, curr_y, curr_z;
+	m_bot->GetPosition(curr_x, curr_y, curr_z);
+	return FleeFromPointIfCan(radius, pTarget, curr_x, curr_y, curr_z);
+}
+
+/**
+* FleeFromTrapGOIfCan()
+* return boolean Check if the bot can move from a hostile nearby trap, then try to find a proper destination and move towards it
+*
+* params: goEntry uint32 the ID of the hostile trap the bot is supposed to move from. It is used to find the radius of the trap
+* params: pTarget Unit* the creature or gameobject the bot will use to define one of the prefered direction in which to flee
+*
+* return true if bot has found a proper destination, false if none was found
+*/
+bool PlayerbotAI::FleeFromTrapGOIfCan(uint32 goEntry, Unit* pTarget)
+{
+
+	if (!goEntry) return false;
+
+	// Step 1: check if the GO exists and find its trap radius
+	GameObjectInfo const* trapInfo = sGOStorage.LookupEntry<GameObjectInfo>(goEntry);
+	if (!trapInfo || trapInfo->type != GAMEOBJECT_TYPE_TRAP)
+		return false;
+
+	float trapRadius = float(trapInfo->trap.radius);
+
+	// Step 2: find a GO in the range around player
+	GameObject* pGo = nullptr;
+
+	MaNGOS::NearestGameObjectEntryInObjectRangeCheck go_check(*m_bot, goEntry, trapRadius);
+	MaNGOS::GameObjectLastSearcher<MaNGOS::NearestGameObjectEntryInObjectRangeCheck> searcher(pGo, go_check);
+
+	Cell::VisitGridObjects(m_bot, searcher, trapRadius);
+
+	if (!pGo)
+		return false;
+
+	return FleeFromPointIfCan(trapRadius, pTarget, pGo->GetPositionX(), pGo->GetPositionY(), pGo->GetPositionZ());
+}
+
+/**
+* FleeFromNpcWithAuraIfCan()
+* return boolean Check if the bot can move from a creature having a specific aura, then try to find a proper destination and move towards it
+*
+* params: goEntry uint32 the ID of the hostile trap the bot is supposed to move from. It is used to find the radius of the trap
+* params: spellId uint32 the spell ID of the aura the creature is supposed to have (directly or from triggered spell). It is used to find the radius of the aura
+* params: pTarget Unit* the creature or gameobject the bot will use to define one of the prefered direction in which to flee
+*
+* return true if bot has found a proper destination, false if none was found
+*/
+bool PlayerbotAI::FleeFromNpcWithAuraIfCan(uint32 NpcEntry, uint32 spellId, Unit* pTarget)
+{
+	
+	if (!NpcEntry) return false;
+	if (!spellId) return false;
+
+	// Step 1: Get radius from hostile aura spell
+	float radius = 0;
+	SpellEntry const* spellproto = sSpellTemplate.LookupEntry<SpellEntry>(spellId);
+	if (spellproto)
+		radius = GetSpellRadius(sSpellRadiusStore.LookupEntry(spellproto->EffectRadiusIndex[EFFECT_INDEX_0]));
+
+	if (radius == 0)
+		return false;
+
+	// Step 2: find a close creature with the right entry:
+	Creature* pCreature = nullptr;
+
+	MaNGOS::NearestCreatureEntryWithLiveStateInObjectRangeCheck creature_check(*m_bot, NpcEntry, false, false, radius, true);
+	MaNGOS::CreatureLastSearcher<MaNGOS::NearestCreatureEntryWithLiveStateInObjectRangeCheck> searcher(pCreature, creature_check);
+
+	Cell::VisitGridObjects(m_bot, searcher, radius);
+
+	if (!pCreature)
+		return false;
+
+	// Force to flee on a direction opposite to the position of the creature (fleeing from it, not only avoiding it)
+	return FleeFromPointIfCan(radius, pTarget, pCreature->GetPositionX(), pCreature->GetPositionY(), pCreature->GetPositionZ(), M_PI_F);
+}
+
+/**
+* FleeFromPointIfCan()
+* return boolean Check if the bot can move from a provided point (x, y, z) to given distance radius
+*
+* params: radius uint32 the minimal radius (distance) used by the bot to look for a destination from the provided position
+* params: pTarget Unit* the creature or gameobject the bot will use to define one of the prefered direction in which to flee
+* params: x0, y0, z0 float the coordinates of the origin point used to calculate the destination point
+* params: forcedAngle float (optional) when iterating to find a proper point in world to move the bot to, this angle will be prioritly used over other angles if it is provided
+*
+* return true if bot has found a proper destination, false if none was found
+*/
+bool PlayerbotAI::FleeFromPointIfCan(uint32 radius, Unit* pTarget, float x0, float y0, float z0, float forcedAngle /* = 0.0f */)
+{
+
+	
+
+	// Get relative position to current target
+	// the bot will try to move on a tangential axis from it
+	float dist_from_target, angle_to_target;
+	if (pTarget)
+	{
+		dist_from_target = pTarget->GetDistance(m_bot);
+		if (dist_from_target > 0.2f)
+			angle_to_target = pTarget->GetAngle(m_bot);
+		else
+			angle_to_target = frand(0, 2 * M_PI_F);
+	}
+	else
+	{
+		dist_from_target = 0.0f;
+		angle_to_target = frand(0, 2 * M_PI_F);
+	}
+
+	// Find coords to move to
+	// The bot will move for a distance equal to the spell radius + 1 yard for more safety
+	float dist = radius; //+ 1.0f;
+	float moveAngles[3];
+	if (rand_chance() > 50)
+		float moveAngles[3] = { -M_PI_F / 2, M_PI_F / 2, 0.0f };
+	else
+		float moveAngles[3] = { M_PI_F / 2, -M_PI_F / 2, 0.0f };
+
+	
+	float angle, x, y, z;
+	bool foundCoords;
+	for (uint8 i = 0; i < 3; i++)
+	{
+		// define an angle tangential to target's direction
+		angle = angle_to_target + moveAngles[i];
+		// if an angle was provided, use it instead but only for the first iteration in case this does not lead to a valid point
+		if (forcedAngle != 0.0f)
+		{
+			angle = forcedAngle;
+			forcedAngle = 0.0f;
+		}
+		foundCoords = true;
+
+		x = x0 + dist * cos(angle);
+		y = y0 + dist * sin(angle);
+		z = z0 + 0.5f;
+
+		// try to fix z
+		if (!m_bot->GetMap()->GetHeightInRange(x, y, z))
+			foundCoords = false;
+
+		// check any collision
+		float testZ = z + 0.5f; // needed to avoid some false positive hit detection of terrain or passable little object
+		if (m_bot->GetMap()->GetHitPosition(x0, y0, z0 + 0.5f, x, y, testZ, -0.1f))
+		{
+			z = testZ;
+			if (!m_bot->GetMap()->GetHeightInRange(x, y, z))
+				foundCoords = false;
+		}
+
+		if (foundCoords)
+		{
+			//m_ai->InterruptCurrentCastingSpell();
+			m_bot->GetMotionMaster()->MovePoint(0, x, y, z);
+			//m_ai->SetIgnoreUpdateTime(2);
+			return true;
+		}
+	}
+
+	return false;
+}
+
+bool PlayerbotAI::FleeFromMonsterIfCan(uint32 radius, Unit* pTarget, float x0, float y0, float z0)
+{
+
+
+
+	// Get relative position to current target
+	// the bot will try to move on a tangential axis from it
+	float dist_from_target, angle_to_target;
+	if (pTarget)
+	{
+		dist_from_target = pTarget->GetDistance(m_bot);
+		if (dist_from_target > 0.2f)
+			angle_to_target = pTarget->GetAngle(m_bot);
+		else
+			angle_to_target = frand(0, 2 * M_PI_F);
+	}
+	else
+	{
+		dist_from_target = 0.0f;
+		angle_to_target = frand(0, 2 * M_PI_F);
+	}
+
+	// Find coords to move to
+	// The bot will move for a distance equal to the spell radius + 1 yard for more safety
+	float dist = radius; //+ 1.0f;
+
+	float moveAngles[3] = { 0.0f ,-0.2f,0.2f};
+	float angle, x, y, z;
+	bool foundCoords;
+	for (uint8 i = 0; i < 3; i++)
+	{
+		// define an angle tangential to target's direction
+		angle = angle_to_target + moveAngles[i];
+		// if an angle was provided, use it instead but only for the first iteration in case this does not lead to a valid point
+
+		foundCoords = true;
+
+		x = x0 + dist * cos(angle);
+		y = y0 + dist * sin(angle);
+		z = z0 + 0.5f;
+
+		// try to fix z
+		if (!m_bot->GetMap()->GetHeightInRange(x, y, z))
+			foundCoords = false;
+
+		// check any collision
+		float testZ = z + 0.5f; // needed to avoid some false positive hit detection of terrain or passable little object
+		if (m_bot->GetMap()->GetHitPosition(x0, y0, z0 + 0.5f, x, y, testZ, -0.1f))
+		{
+			z = testZ;
+			if (!m_bot->GetMap()->GetHeightInRange(x, y, z))
+				foundCoords = false;
+		}
+
+		if (foundCoords)
+		{
+			//m_ai->InterruptCurrentCastingSpell();
+			m_bot->GetMotionMaster()->MovePoint(0, x, y, z);
+			//m_ai->SetIgnoreUpdateTime(2);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 // handle commands sent through chat channels
 void PlayerbotAI::HandleCommand(const std::string& text, Player& fromPlayer)
 {
@@ -6248,6 +6527,13 @@ void PlayerbotAI::HandleCommand(const std::string& text, Player& fromPlayer)
 
     else if (ExtractCommand("sell", input))
         _HandleCommandSell(input, fromPlayer);
+
+	else if (ExtractCommand("set", input))
+		_HandleCommandSet(input, fromPlayer);
+
+	else if (ExtractCommand("scatter", input))
+		_HandleCommandScatter(input, fromPlayer);
+
 
     else if (ExtractCommand("repair", input))
         _HandleCommandRepair(input, fromPlayer);
@@ -6499,6 +6785,8 @@ void PlayerbotAI::_HandleCommandOrders(std::string& text, Player& fromPlayer)
     SendOrders(*GetMaster());
 }
 
+
+
 void PlayerbotAI::_HandleCommandFollow(std::string& text, Player& fromPlayer)
 {
     if (text != "")
@@ -6508,6 +6796,116 @@ void PlayerbotAI::_HandleCommandFollow(std::string& text, Player& fromPlayer)
     }
     SetMovementOrder(MOVEMENT_FOLLOW, GetMaster());
 }
+
+void PlayerbotAI::_HandleCommandSet(std::string& text, Player& fromPlayer)
+{
+	if (ExtractCommand("tankhere", text))
+	{
+		GetMaster()->GetPosition(m_fightx, m_fighty, m_fightz);
+		TellMaster("I will try to fight where you are standing!");
+		
+
+	}
+
+	if (ExtractCommand("mindistance", text) || ExtractCommand("mindis", text))
+	{
+		uint32 mind;
+		sscanf(text.c_str(), "%d", &mind);
+		m_MinRange = mind;
+		TellMaster("Set the minimum distance to '%u' m", m_MinRange);
+
+	}
+	if (ExtractCommand("icon", text)) 
+	{
+		uint32 iconnr;
+		sscanf(text.c_str(), "%d", &iconnr);
+		if (iconnr < 8)
+		{
+			m_IconToWatch = iconnr;
+			TellMaster("Set the target icon to watch to '%u'", m_IconToWatch);
+		}
+		else
+		{
+			TellMaster("There are only 8 icons! (beginning at 0)");
+		}
+
+	}
+	if (ExtractCommand("task", text) || ExtractCommand("t", text))
+	{
+		//TellMaster("What should i do?");
+		if (ExtractCommand("normal", text) || ExtractCommand("norm", text))
+		{
+			m_Tasktype = TASK_NORMAL;
+			TellMaster("I will behave normally");
+		}
+		if (ExtractCommand("tank", text))
+		{
+			m_Tasktype = TASK_TANK;
+			TellMaster("I will try to tank");
+		}
+		if (ExtractCommand("manadrain", text) || ExtractCommand("md", text))
+		{
+			m_Tasktype = TASK_MANADRAIN;
+			TellMaster("I will mana drain my target");
+		}
+		if (ExtractCommand("neutralize", text) || ExtractCommand("neut", text))
+		{
+			m_Tasktype = TASK_NEUTRALIZE;
+			TellMaster("I will neutralize my target");
+		}
+		if (ExtractCommand("raid", text))
+		{
+			m_Tasktype = TASK_RAID;
+			TellMaster("I will respond to raid icons");
+		}
+		if (ExtractCommand("aoe", text))
+		{
+			m_Tasktype = TASK_AOE;
+			TellMaster("I will cast aoe spells!");
+		}
+
+		uint32 iconnr;
+		sscanf(text.c_str(), "%d", &iconnr);
+		if (iconnr < 8)
+		{
+			m_IconToWatch = iconnr;
+			TellMaster("Set the target icon to watch to '%u'", m_IconToWatch);
+		}
+		else
+		{
+			TellMaster("There are only 8 icons! (beginning at 0)");
+		}
+	}
+	
+
+
+
+
+}
+
+
+void PlayerbotAI::_HandleCommandScatter(std::string& text, Player& fromPlayer)
+{
+	float curr_x, curr_y, curr_z;
+	m_bot->GetPosition(curr_x, curr_y, curr_z);
+	if (text != "")
+	{
+		uint32 range;
+		sscanf(text.c_str(), "%d", &range);
+		FleeFromPointIfCan(range, m_bot->GetTarget(), curr_x, curr_y, curr_z);
+	}
+	else
+	{
+		FleeFromPointIfCan(10, m_bot->GetTarget(), curr_x, curr_y, curr_z);
+	}
+	//SetMovementOrder(MOVEMENT_SCATTER, GetMaster());
+	
+
+	
+
+	
+}
+
 
 void PlayerbotAI::_HandleCommandStay(std::string& text, Player& fromPlayer)
 {
@@ -6713,6 +7111,7 @@ void PlayerbotAI::_HandleCommandNeutralize(std::string& text, Player& fromPlayer
         return;
     }
 }
+
 
 void PlayerbotAI::_HandleCommandCast(std::string& text, Player& fromPlayer)
 {

@@ -79,6 +79,8 @@ PlayerbotDruidAI::PlayerbotDruidAI(Player* const master, Player* const bot, Play
 
 PlayerbotDruidAI::~PlayerbotDruidAI() {}
 
+
+
 CombatManeuverReturns PlayerbotDruidAI::DoFirstCombatManeuver(Unit* pTarget)
 {
     bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
@@ -154,24 +156,37 @@ CombatManeuverReturns PlayerbotDruidAI::DoFirstCombatManeuverPVP(Unit* /*pTarget
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuver(Unit* pTarget)
+
+CombatManeuverReturns PlayerbotDruidAI::DoNeutralizeTask(Unit* pTarget)
 {
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
+	if (pTarget)
+	{
 
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-    }
+		if (m_ai->In_Reach(pTarget, HIBERNATE) && m_bot->IsSpellReady(HIBERNATE))
+		{
+			m_ai->TellMaster("trying to cast neutralize");
 
-    return RETURN_NO_ACTION_ERROR;
+			if (HIBERNATE && !pTarget->HasAura(HIBERNATE))
+				return CastSpell(HIBERNATE, pTarget);
+		}
+		else
+		{
+			m_ai->TellMaster("not in reach for neutralize");
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
 }
 
 CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuverPVE(Unit* pTarget)
@@ -180,7 +195,7 @@ CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuverPVE(Unit* pTarget)
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
 
     bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
-
+	Unit* pVictim = pTarget->getVictim();
     //uint32 masterHP = GetMaster()->GetHealth() * 100 / GetMaster()->GetMaxHealth();
 
     uint32 spec = m_bot->GetSpec();
@@ -196,6 +211,25 @@ CombatManeuverReturns PlayerbotDruidAI::DoNextCombatManeuverPVE(Unit* pTarget)
     //Unit* pVictim = pTarget->getVictim();
     uint32 BEAR = (DIRE_BEAR_FORM > 0 ? DIRE_BEAR_FORM : BEAR_FORM);
 
+
+	float target_x, target_y, target_z;
+	pTarget->GetPosition(target_x, target_y, target_z);
+	if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(1);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange + 2.0f, pTarget, target_x, target_y, target_z);
+		return RETURN_CONTINUE;
+	}
+	if (m_bot->GetCombatDistance(pTarget, true) > 30.0f)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(2);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_bot->GetMotionMaster()->MoveFollow(pTarget, 28.5f, m_bot->GetOrientation());
+		return RETURN_CONTINUE;
+	}
     // TODO: do something to allow emergency heals for non-healers?
     switch (CheckForms())
     {

@@ -95,6 +95,7 @@ enum
     MANA_SPRING_EFFECT_1            = 5677,
     TREMOR_TOTEM_EFFECT_1           = 8145,
     EARTHBIND_EFFECT_1              = 6474,
+	MANA_TIDE_EFFECT_1 = 16191
     // FIRE_ELEMENTAL_TOTEM uses spell effect index 2
     // SEARING_TOTEM uses spell effect index 0
     // EARTH_ELEMENTAL_TOTEM uses spell effect indexes 1 and 2
@@ -111,7 +112,7 @@ class MANGOS_DLL_SPEC PlayerbotShamanAI : PlayerbotClassAI
 
         // all combat actions go here
         CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
-        CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
+        //CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
 
         // all non combat actions go here, ex buffs, heals, rezzes
         void DoNonCombatActions();
@@ -207,7 +208,8 @@ class MANGOS_DLL_SPEC PlayerbotShamanAI : PlayerbotClassAI
                HEALING_STREAM_EFFECT,
                MANA_SPRING_EFFECT,
                TREMOR_TOTEM_EFFECT,
-               EARTHBIND_EFFECT;
+               EARTHBIND_EFFECT,
+			   MANA_TIDE_EFFECT;
 
         uint32 SpellSequence, LastSpellEnhancement, LastSpellRestoration, LastSpellElemental;
 };

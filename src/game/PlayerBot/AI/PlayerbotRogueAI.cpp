@@ -64,6 +64,11 @@ PlayerbotRogueAI::PlayerbotRogueAI(Player* const master, Player* const bot, Play
 
 PlayerbotRogueAI::~PlayerbotRogueAI() {}
 
+CombatManeuverReturns PlayerbotRogueAI::DoNeutralizeTask(Unit* pTarget)
+{
+	return RETURN_NO_ACTION_ERROR;
+}
+
 CombatManeuverReturns PlayerbotRogueAI::DoFirstCombatManeuver(Unit* pTarget)
 {
     // There are NPCs in BGs and Open World PvP, so don't filter this on PvP scenarios (of course if PvP targets anyone but tank, all bets are off anyway)
@@ -111,6 +116,8 @@ CombatManeuverReturns PlayerbotRogueAI::DoFirstCombatManeuver(Unit* pTarget)
 
 CombatManeuverReturns PlayerbotRogueAI::DoFirstCombatManeuverPVE(Unit* pTarget)
 {
+	
+	//m_ai->TellMaster("First Combat Maneuver");
     if (STEALTH > 0 && !m_bot->HasAura(STEALTH, EFFECT_INDEX_0) && m_ai->CastSpell(STEALTH, *m_bot))
     {
         return RETURN_FINISHED_FIRST_MOVES; // DoNextCombatManeuver handles active stealth
@@ -142,119 +149,120 @@ CombatManeuverReturns PlayerbotRogueAI::DoFirstCombatManeuverPVP(Unit* pTarget)
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotRogueAI::DoNextCombatManeuver(Unit* pTarget)
-{
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
-
-    return RETURN_NO_ACTION_ERROR;
-}
 
 CombatManeuverReturns PlayerbotRogueAI::DoNextCombatManeuverPVE(Unit* pTarget)
 {
-    if (!pTarget) return RETURN_NO_ACTION_ERROR;
-    if (!m_ai)    return RETURN_NO_ACTION_ERROR;
-    if (!m_bot)   return RETURN_NO_ACTION_ERROR;
+	if (!pTarget) return RETURN_NO_ACTION_ERROR;
+	if (!m_ai)    return RETURN_NO_ACTION_ERROR;
+	if (!m_bot)   return RETURN_NO_ACTION_ERROR;
 
-    Unit* pVictim = pTarget->getVictim();
-    bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
+	Unit* pVictim = pTarget->getVictim();
+	bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
 
-    // TODO: make this work better...
-    /*if (pVictim)
-       {
-        if( pVictim!=m_bot && !m_bot->hasUnitState(UNIT_STAT_FOLLOW) && !pTarget->isInBackInMap(m_bot,10) ) {
-            m_ai->TellMaster( "getting behind target" );
-            m_bot->GetMotionMaster()->Clear( true );
-            m_bot->GetMotionMaster()->MoveFollow( pTarget, 1, 2*M_PI );
-        }
-        else if( pVictim==m_bot && m_bot->hasUnitState(UNIT_STAT_FOLLOW) )
-        {
-            m_ai->TellMaster( "chasing attacking target" );
-            m_bot->GetMotionMaster()->Clear( true );
-            m_bot->GetMotionMaster()->MoveChase( pTarget );
-        }
-       }*/
+	
+	// TODO: make this work better...
+	/*if (pVictim)
+	   {
+		if( pVictim!=m_bot && !m_bot->hasUnitState(UNIT_STAT_FOLLOW) && !pTarget->isInBackInMap(m_bot,10) ) {
+			m_ai->TellMaster( "getting behind target" );
+			m_bot->GetMotionMaster()->Clear( true );
+			m_bot->GetMotionMaster()->MoveFollow( pTarget, 1, 2*M_PI );
+		}
+		else if( pVictim==m_bot && m_bot->hasUnitState(UNIT_STAT_FOLLOW) )
+		{
+			m_ai->TellMaster( "chasing attacking target" );
+			m_bot->GetMotionMaster()->Clear( true );
+			m_bot->GetMotionMaster()->MoveChase( pTarget );
+		}
+	   }*/
 
-    // If bot is stealthed: pre-combat actions
-    if (m_bot->HasAura(STEALTH, EFFECT_INDEX_0))
-    {
-        if (PICK_POCKET > 0 && m_ai->In_Reach(pTarget, PICK_POCKET) && (pTarget->GetCreatureTypeMask() & CREATURE_TYPEMASK_HUMANOID_OR_UNDEAD) != 0 && m_ai->PickPocket(pTarget))
-            return RETURN_CONTINUE;
-        if (PREMEDITATION > 0 && m_ai->CastSpell(PREMEDITATION, *pTarget))
-            return RETURN_CONTINUE;
-        if (AMBUSH > 0 && pTarget->isInBackInMap(m_bot, 5.0f) && m_ai->CastSpell(AMBUSH, *pTarget))
-            return RETURN_CONTINUE;
-        if (CHEAP_SHOT > 0 && !pTarget->HasAura(CHEAP_SHOT, EFFECT_INDEX_0) && m_ai->CastSpell(CHEAP_SHOT, *pTarget))
-            return RETURN_CONTINUE;
-        if (GARROTE > 0 && pTarget->isInBackInMap(m_bot, 5.0f) && m_ai->CastSpell(GARROTE, *pTarget))
-            return RETURN_CONTINUE;
+	   // If bot is stealthed: pre-combat actions
+	if (m_bot->HasAura(STEALTH, EFFECT_INDEX_0))
+	{
+		if (PICK_POCKET > 0 && m_ai->In_Reach(pTarget, PICK_POCKET) && (pTarget->GetCreatureTypeMask() & CREATURE_TYPEMASK_HUMANOID_OR_UNDEAD) != 0 && m_ai->PickPocket(pTarget))
+			return RETURN_CONTINUE;
+		if (PREMEDITATION > 0 && m_ai->CastSpell(PREMEDITATION, *pTarget))
+			return RETURN_CONTINUE;
+		if (AMBUSH > 0 && pTarget->isInBackInMap(m_bot, 5.0f) && m_ai->CastSpell(AMBUSH, *pTarget))
+			return RETURN_CONTINUE;
+		if (CHEAP_SHOT > 0 && !pTarget->HasAura(CHEAP_SHOT, EFFECT_INDEX_0) && m_ai->CastSpell(CHEAP_SHOT, *pTarget))
+			return RETURN_CONTINUE;
+		if (GARROTE > 0 && pTarget->isInBackInMap(m_bot, 5.0f) && m_ai->CastSpell(GARROTE, *pTarget))
+			return RETURN_CONTINUE;
 
-        // No appropriate action found, remove stealth
-        m_bot->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
-        return RETURN_CONTINUE;
-    }
+		// No appropriate action found, remove stealth
+		m_bot->RemoveSpellsCausingAura(SPELL_AURA_MOD_STEALTH);
+		return RETURN_CONTINUE;
+	}
 
-    //Used to determine if this bot has highest threat
-    Unit* newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE)(PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
-    if (newTarget && !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_TANK) && !m_ai->IsNeutralized(newTarget)) // TODO: && party has a tank
-    {
-        // Aggroed by an elite
-        if (m_ai->IsElite(newTarget))
-        {
-            if (VANISH > 0 && m_ai->GetHealthPercent() <= 20 && m_bot->IsSpellReady(VANISH) && !m_bot->HasAura(FEINT, EFFECT_INDEX_0) && m_ai->CastSpell(VANISH))
-            {
-                m_ai->SetIgnoreUpdateTime(11);
-                return RETURN_CONTINUE;
-            }
-            if (BLIND > 0 && m_ai->GetHealthPercent() <= 30 && m_ai->HasSpellReagents(BLIND) && !newTarget->HasAura(BLIND, EFFECT_INDEX_0) && m_ai->CastSpell(BLIND, *newTarget))
-                return RETURN_CONTINUE;
-            if (EVASION > 0 && m_ai->GetHealthPercent() <= 35 && m_bot->IsSpellReady(EVASION) && !m_bot->HasAura(EVASION, EFFECT_INDEX_0) && m_ai->CastSpell(EVASION))
-                return RETURN_CONTINUE;
-            if (FEINT > 0 && m_bot->IsSpellReady(FEINT) && m_ai->CastSpell(FEINT, *newTarget))
-                return RETURN_CONTINUE;
-            if (PREPARATION > 0 && m_bot->IsSpellReady(PREPARATION) && (!m_bot->IsSpellReady(EVASION) || !m_bot->IsSpellReady(VANISH)) && m_ai->CastSpell(PREPARATION))
-                return RETURN_CONTINUE;
-        }
+	//Used to determine if this bot has highest threat
+	Unit* newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE)(PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
+	if (newTarget && !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_TANK) && !m_ai->IsNeutralized(newTarget)) // TODO: && party has a tank
+	{
+		// Aggroed by an elite
+		if (m_ai->IsElite(newTarget))
+		{
+			if (VANISH > 0 && m_ai->GetHealthPercent() <= 20 && m_bot->IsSpellReady(VANISH) && !m_bot->HasAura(FEINT, EFFECT_INDEX_0) && m_ai->CastSpell(VANISH))
+			{
+				m_ai->SetIgnoreUpdateTime(11);
+				return RETURN_CONTINUE;
+			}
+			if (BLIND > 0 && m_ai->GetHealthPercent() <= 30 && m_ai->HasSpellReagents(BLIND) && !newTarget->HasAura(BLIND, EFFECT_INDEX_0) && m_ai->CastSpell(BLIND, *newTarget))
+				return RETURN_CONTINUE;
+			if (EVASION > 0 && m_ai->GetHealthPercent() <= 35 && m_bot->IsSpellReady(EVASION) && !m_bot->HasAura(EVASION, EFFECT_INDEX_0) && m_ai->CastSpell(EVASION))
+				return RETURN_CONTINUE;
+			if (FEINT > 0 && m_bot->IsSpellReady(FEINT) && m_ai->CastSpell(FEINT, *newTarget))
+				return RETURN_CONTINUE;
+			if (PREPARATION > 0 && m_bot->IsSpellReady(PREPARATION) && (!m_bot->IsSpellReady(EVASION) || !m_bot->IsSpellReady(VANISH)) && m_ai->CastSpell(PREPARATION))
+				return RETURN_CONTINUE;
+		}
 
-        // Default: Gouge the target
-        if (GOUGE > 0 && pTarget->isInFrontInMap(m_bot, 5.0f) && !pTarget->HasAura(GOUGE, EFFECT_INDEX_0) && m_ai->CastSpell(GOUGE, *newTarget))
-            return RETURN_CONTINUE;
-    }
+		// Default: Gouge the target
+		if (GOUGE > 0 && pTarget->isInFrontInMap(m_bot, 5.0f) && !pTarget->HasAura(GOUGE, EFFECT_INDEX_0) && m_ai->CastSpell(GOUGE, *newTarget))
+			return RETURN_CONTINUE;
+	}
+	else //Kev edited
+	{
+		if (!m_bot->IsFacingTargetsBack(pTarget))
+		{
+			m_ai->TellMaster("getting behind target");
+			m_bot->GetMotionMaster()->Clear(true);
+			float curr_x, curr_y, curr_z;
+			pTarget->GetPosition(curr_x, curr_y, curr_z);
+			m_bot->GetMotionMaster()->MoveRandomAroundPoint(curr_x, curr_y, curr_z, 2);
 
-    // Buff bot with cold blood if available
-    // This buff is done after the stealth and aggro management code because we don't want to give starting extra damage (= extra threat) to a bot
-    // as it is obviously not soloing his/her target
-    if (COLD_BLOOD > 0 && !m_bot->HasAura(COLD_BLOOD, EFFECT_INDEX_0) && m_bot->IsSpellReady(COLD_BLOOD) && m_ai->CastSpell(COLD_BLOOD, *m_bot))
-        return RETURN_CONTINUE;
 
-    // Rogue like behaviour ^^
-    /*if (VANISH > 0 && GetMaster()->isDead()) { //Causes the server to crash :( removed for now.
-        m_bot->AttackStop();
-        m_bot->RemoveAllAttackers();
-        m_ai->CastSpell(VANISH);
-        //m_bot->RemoveAllSpellCooldown();
-        m_ai->TellMaster("AttackStop, CombatStop, Vanish");
-    }*/
+		}
+	}
+	
 
-    // we fight in melee, target is not in range, skip the next part!
-    if (!meleeReach)
-        return RETURN_CONTINUE;
 
+	// Buff bot with cold blood if available
+	// This buff is done after the stealth and aggro management code because we don't want to give starting extra damage (= extra threat) to a bot
+	// as it is obviously not soloing his/her target
+	if (COLD_BLOOD > 0 && !m_bot->HasAura(COLD_BLOOD, EFFECT_INDEX_0) && m_bot->IsSpellReady(COLD_BLOOD) && m_ai->CastSpell(COLD_BLOOD, *m_bot))
+		return RETURN_CONTINUE;
+
+	// Rogue like behaviour ^^
+	/*if (VANISH > 0 && GetMaster()->isDead()) { //Causes the server to crash :( removed for now.
+		m_bot->AttackStop();
+		m_bot->RemoveAllAttackers();
+		m_ai->CastSpell(VANISH);
+		//m_bot->RemoveAllSpellCooldown();
+		m_ai->TellMaster("AttackStop, CombatStop, Vanish");
+	}*/
+
+	// we fight in melee, target is not in range, skip the next part!
+	//KEV EDIT
+	if (!meleeReach)
+	{
+		//m_ai->TellMaster("trying to get in range");
+		m_bot->GetMotionMaster()->Clear(true);
+		m_bot->GetMotionMaster()->MoveChase(pTarget);
+		//m_bot->GetMotionMaster()->MoveFollow(pTarget, 4.5f, m_bot->GetOrientation());
+		return RETURN_CONTINUE;
+	}
     // If target is elite and wounded: use adrenaline rush to finish it quicker
     if (ADRENALINE_RUSH > 0 && m_ai->IsElite(pTarget) && pTarget->GetHealthPercent() < 50 && !m_bot->HasAura(ADRENALINE_RUSH, EFFECT_INDEX_0) && m_bot->IsSpellReady(ADRENALINE_RUSH) && m_ai->CastSpell(ADRENALINE_RUSH, *m_bot))
         return RETURN_CONTINUE;

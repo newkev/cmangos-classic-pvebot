@@ -139,7 +139,12 @@ class MANGOS_DLL_SPEC PlayerbotWarlockAI : PlayerbotClassAI
 
         // all combat actions go here
         CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
-        CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
+        //CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
+
+		CombatManeuverReturns DoManaDrainTask(Unit* pTarget);
+		CombatManeuverReturns DoNeutralizeTask(Unit* pTarget);
+		CombatManeuverReturns DoAOETask(Unit* pTarget);
+
         uint32 Neutralize(uint8 creatureType);
 
         // all non combat actions go here, ex buffs, heals, rezzes

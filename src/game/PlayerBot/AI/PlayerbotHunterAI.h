@@ -97,7 +97,8 @@ class MANGOS_DLL_SPEC PlayerbotHunterAI : PlayerbotClassAI
 
         // all combat actions go here
         CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
-        CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
+		CombatManeuverReturns DoAOETask(Unit* pTarget);
+        //CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
 
         // all non combat actions go here, ex buffs, heals, rezzes
         void DoNonCombatActions();

@@ -82,8 +82,8 @@ class MANGOS_DLL_SPEC PlayerbotRogueAI : PlayerbotClassAI
 
         // all combat actions go here
         CombatManeuverReturns DoFirstCombatManeuver(Unit* pTarget);
-        CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
-
+        //CombatManeuverReturns DoNextCombatManeuver(Unit* pTarget);
+		CombatManeuverReturns DoNeutralizeTask(Unit* pTarget);
         // all non combat actions go here, ex buffs, heals, rezzes
         void DoNonCombatActions();
 
