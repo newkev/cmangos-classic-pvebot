@@ -266,27 +266,32 @@ CombatManeuverReturns PlayerbotWarriorAI::DoFirstCombatManeuverPVP(Unit* pTarget
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotWarriorAI::DoNextCombatManeuver(Unit* pTarget)
+
+
+CombatManeuverReturns PlayerbotWarriorAI::DoTankTask(Unit* pTarget)
 {
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
+	Unit* pVictim = pTarget->getVictim();
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
-
-    return RETURN_NO_ACTION_ERROR;
+	if (pVictim != m_bot)
+	{
+		return DoNextCombatManeuverPVE(pTarget);
+	}
+	else
+	{
+		float dis;
+		dis = m_bot->GetDistanceNoBoundingRadius(m_ai->m_fightx, m_ai->m_fighty, m_ai->m_fightz);
+		if (dis > 2)
+		{
+			m_bot->GetMotionMaster()->Clear(false);
+			m_ai->SetIgnoreUpdateTime(1);
+			m_bot->GetMotionMaster()->MovePoint(0, m_ai->m_fightx, m_ai->m_fighty, m_ai->m_fightz, true);
+			return RETURN_CONTINUE;
+		}
+		else
+		{
+			return DoNextCombatManeuverPVE(pTarget);
+		}
+	}
 }
 
 CombatManeuverReturns PlayerbotWarriorAI::DoNextCombatManeuverPVE(Unit* pTarget)
@@ -307,6 +312,22 @@ CombatManeuverReturns PlayerbotWarriorAI::DoNextCombatManeuverPVE(Unit* pTarget)
         m_ai->CastSpell(BLOODRAGE);
 
     Creature* pCreature = (Creature*) pTarget;
+
+
+
+	bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
+
+
+	if (!meleeReach)
+	{
+
+			//m_ai->TellMaster("trying to get in range");
+			m_bot->GetMotionMaster()->Clear(true);
+			m_bot->GetMotionMaster()->MoveChase(pTarget);
+			return RETURN_CONTINUE;
+			//m_bot->GetMotionMaster()->MoveFollow(pTarget, 4.5f, m_bot->GetOrientation());
+		
+	}
 
     // Prevent low health humanoid from fleeing with Hamstring
     if ((m_bot->HasAura(BATTLE_STANCE, EFFECT_INDEX_0) || m_bot->HasAura(BERSERKER_STANCE, EFFECT_INDEX_0)) && pTarget->GetHealthPercent() < 20 && !m_ai->IsElite(pTarget, true))

@@ -133,33 +133,79 @@ CombatManeuverReturns PlayerbotMageAI::DoFirstCombatManeuverPVP(Unit* /*pTarget*
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuver(Unit* pTarget)
+
+CombatManeuverReturns PlayerbotMageAI::DoAOETask(Unit* pTarget)
 {
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
 
-    return RETURN_NO_ACTION_ERROR;
+	if (pTarget)
+	{
+
+		if (m_ai->In_Reach(pTarget, BLIZZARD))
+		{
+
+			if (BLIZZARD && !pTarget->HasAura(BLIZZARD) && m_bot->IsSpellReady(BLIZZARD))
+				return CastSpell(BLIZZARD, pTarget);
+		}
+		else
+		{
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
+}
+
+CombatManeuverReturns PlayerbotMageAI::DoNeutralizeTask(Unit* pTarget)
+{
+	
+
+		if (pTarget)
+		{
+
+			if (m_ai->In_Reach(pTarget, POLYMORPH))
+			{
+				m_ai->TellMaster("trying to cast neutralize");
+
+				if (POLYMORPH && !pTarget->HasAura(POLYMORPH) && m_bot->IsSpellReady(POLYMORPH))
+					return CastSpell(POLYMORPH, pTarget);
+			}
+			else
+			{
+				m_ai->TellMaster("not in reach for neutralize");
+
+				m_ai->SetIgnoreUpdateTime(2);
+				m_bot->GetMotionMaster()->Clear(false);
+				m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+				return RETURN_CONTINUE;
+			}
+
+
+		}
+	
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
 }
 
 CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
 {
     if (!m_ai)  return RETURN_NO_ACTION_ERROR;
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
+
+
 
     Unit* pVictim = pTarget->getVictim();
     bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
@@ -174,6 +220,10 @@ CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
              && (SHOOT == 0 || !m_bot->GetWeaponForAttack(RANGED_ATTACK, true, true)))
         m_ai->SetCombatStyle(PlayerbotAI::COMBAT_MELEE);
 
+
+	
+
+
     //Used to determine if this bot is highest on threat
     Unit* newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE)(PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
 
@@ -184,6 +234,31 @@ CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
             return RETURN_CONTINUE;
     }
 
+
+	// If below ranged combat distance and bot is not attacked by target
+	// make it flee from target for a few seconds to get in ranged distance again
+	// Do not do it if passive or stay orders.
+	float target_x, target_y, target_z;
+	pTarget->GetPosition(target_x, target_y, target_z);
+	if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(1);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange + 2.0f, pTarget, target_x, target_y, target_z);
+		return RETURN_CONTINUE;
+	}
+	if (m_bot->GetCombatDistance(pTarget, true) > 30.0f )
+	{
+		m_ai->TellMaster("getting in range");
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(2);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_bot->GetMotionMaster()->MoveFollow(pTarget, 28.5f, m_bot->GetOrientation());
+		return RETURN_CONTINUE;
+	}
+
+
     if (newTarget && !m_ai->IsNeutralized(newTarget)) // Bot has aggro and the mob is not already crowd controled
     {
         if (newTarget->GetHealthPercent() > 25)
@@ -192,12 +267,16 @@ CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
             if (m_ai->IsElite(newTarget))
             {
                 // If the attacker is a beast or humanoid, let's the bot give it a form more suited to the low intellect of something fool enough to attack a mage
-                Creature* pCreature = (Creature*) newTarget;
+
+
+         /*       Creature* pCreature = (Creature*) newTarget;
+
+
                 if (pCreature && (pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_HUMANOID || pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_BEAST))
                 {
                     if (POLYMORPH > 0 && CastSpell(POLYMORPH, newTarget))
                         return RETURN_CONTINUE;
-                }
+                }*/
 
                 // Things are getting dire: cast Ice block
                 if (ICE_BLOCK > 0 && m_bot->IsSpellReady(ICE_BLOCK) && m_ai->GetHealthPercent() < 30 && !m_bot->HasAura(ICE_BLOCK, EFFECT_INDEX_0) && m_ai->CastSpell(ICE_BLOCK))
@@ -261,8 +340,9 @@ CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
             }
             if (FROSTBOLT > 0 && m_ai->In_Reach(pTarget, FROSTBOLT) && !pTarget->HasAura(FROSTBOLT, EFFECT_INDEX_0) && CastSpell(FROSTBOLT, pTarget))
                 return RETURN_CONTINUE;
-            if (FROST_NOVA > 0 && m_bot->IsSpellReady(FROST_NOVA) && meleeReach && !pTarget->HasAura(FROST_NOVA, EFFECT_INDEX_0) && CastSpell(FROST_NOVA, pTarget))
-                return RETURN_CONTINUE;
+
+            //if (FROST_NOVA > 0 && m_bot->IsSpellReady(FROST_NOVA) && meleeReach && !pTarget->HasAura(FROST_NOVA, EFFECT_INDEX_0) && CastSpell(FROST_NOVA, pTarget))
+               // return RETURN_CONTINUE;
             // Default frost spec action
             if (FROSTBOLT > 0 && m_ai->In_Reach(pTarget, FROSTBOLT))
                 return CastSpell(FROSTBOLT, pTarget);
@@ -350,6 +430,7 @@ CombatManeuverReturns PlayerbotMageAI::DoNextCombatManeuverPVE(Unit* pTarget)
     if (FIREBALL > 0 && m_ai->In_Reach(pTarget, FIREBALL) && CastSpell(FIREBALL, pTarget)) // Very low levels
         return RETURN_CONTINUE;
 
+	m_ai->TellMaster("cast spell");
     // Default: shoot with wand
     return CastSpell(SHOOT, pTarget);
 
@@ -486,6 +567,8 @@ bool PlayerbotMageAI::BuffHelper(PlayerbotAI* ai, uint32 spellId, Unit* target)
 
     return false;
 }
+
+
 
 // Return to UpdateAI the spellId usable to neutralize a target with creaturetype
 uint32 PlayerbotMageAI::Neutralize(uint8 creatureType)

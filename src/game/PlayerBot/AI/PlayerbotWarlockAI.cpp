@@ -90,6 +90,8 @@ PlayerbotWarlockAI::PlayerbotWarlockAI(Player* const master, Player* const bot, 
 
 PlayerbotWarlockAI::~PlayerbotWarlockAI() {}
 
+
+
 CombatManeuverReturns PlayerbotWarlockAI::DoFirstCombatManeuver(Unit* pTarget)
 {
     // There are NPCs in BGs and Open World PvP, so don't filter this on PvP scenarios (of course if PvP targets anyone but tank, all bets are off anyway)
@@ -143,27 +145,98 @@ CombatManeuverReturns PlayerbotWarlockAI::DoFirstCombatManeuverPVP(Unit* /*pTarg
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuver(Unit* pTarget)
+CombatManeuverReturns PlayerbotWarlockAI::DoAOETask(Unit* pTarget)
 {
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
+	if (pTarget)
+	{
+		m_ai->FaceTarget(pTarget);
+		if (m_ai->In_Reach(pTarget, RAIN_OF_FIRE))
+		{
 
-    return RETURN_NO_ACTION_ERROR;
+			if (RAIN_OF_FIRE && !pTarget->HasAura(RAIN_OF_FIRE) && m_bot->IsSpellReady(RAIN_OF_FIRE))
+				return CastSpell(RAIN_OF_FIRE, pTarget);
+		}
+		else
+		{
+
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
+}
+
+CombatManeuverReturns PlayerbotWarlockAI::DoManaDrainTask(Unit* pTarget)
+{
+	
+
+
+		if (pTarget)
+		{
+			m_ai->FaceTarget(pTarget);
+			if (m_ai->In_Reach(pTarget, DRAIN_MANA))
+			{
+				
+				if (DRAIN_MANA && !pTarget->HasAura(DRAIN_MANA) && m_bot->IsSpellReady(DRAIN_MANA))
+					return CastSpell(DRAIN_MANA, pTarget);
+			}
+			else
+			{
+
+			
+				m_ai->SetIgnoreUpdateTime(2);
+				m_bot->GetMotionMaster()->Clear(false);
+				m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+				return RETURN_CONTINUE;
+			}
+
+
+		}
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
+}
+
+CombatManeuverReturns PlayerbotWarlockAI::DoNeutralizeTask(Unit* pTarget)
+{
+	if (pTarget)
+	{
+		m_ai->FaceTarget(pTarget);
+		if (m_ai->In_Reach(pTarget, BANISH))
+		{
+
+			if (BANISH && !pTarget->HasAura(BANISH) && m_bot->IsSpellReady(BANISH))
+				return CastSpell(BANISH, pTarget);
+		}
+		else
+		{
+
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
 }
 
 CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
@@ -173,6 +246,7 @@ CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
 
     //Unit* pVictim = pTarget->getVictim();
     bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
+	Unit* pVictim = pTarget->getVictim();
     Pet* pet = m_bot->GetPet();
     uint32 spec = m_bot->GetSpec();
     uint8 shardCount = m_bot->GetItemCount(SOUL_SHARD, false, nullptr);
@@ -188,6 +262,26 @@ CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
         if (healthStone)
             m_ai->UseItem(healthStone);
     }
+
+	float target_x, target_y, target_z;
+	pTarget->GetPosition(target_x, target_y, target_z);
+	if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(1);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange+ 2.0f, pTarget, target_x, target_y, target_z);
+		return RETURN_CONTINUE;
+	}
+	if (m_bot->GetCombatDistance(pTarget, true) > 30.0f)
+	{
+		m_ai->TellMaster("i will walk!");
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(2);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_bot->GetMotionMaster()->MoveFollow(pTarget, 29.5f, m_bot->GetOrientation());
+		return RETURN_CONTINUE;
+	}
 
     // Voidwalker sacrifice gives shield - but you lose the pet (and it's DPS/tank) - use only as last resort for your own health!
     if (m_ai->GetHealthPercent() < 20 && pet && pet->GetEntry() == DEMON_VOIDWALKER && SACRIFICE && !m_bot->HasAura(SACRIFICE))
@@ -230,11 +324,11 @@ CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
 
                 }
                 // if aggroed mob is a demon or an elemental: banish it
-                if (pCreature && (pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_DEMON || pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_ELEMENTAL))
+            /*    if (pCreature && (pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_DEMON || pCreature->GetCreatureInfo()->CreatureType == CREATURE_TYPE_ELEMENTAL))
                 {
                     if (BANISH && !newTarget->HasAura(BANISH) && CastSpell(BANISH, newTarget))
                         return RETURN_CONTINUE;
-                }
+                }*/
 
                 return RETURN_NO_ACTION_OK; // do nothing and pray tank gets aggro off you
             }
@@ -244,7 +338,7 @@ CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
             return CastSpell(SHOOT, pTarget);
         }
     }
-
+	m_ai->TellMaster("halfway thro");
     // Create soul shard (only on non-worldboss)
     uint8 freeSpace = m_ai->GetFreeBagSpace();
     uint8 HPThreshold = (m_ai->IsElite(pTarget) ? 10 : 25);
@@ -307,14 +401,14 @@ CombatManeuverReturns PlayerbotWarlockAI::DoNextCombatManeuverPVE(Unit* pTarget)
                     return RETURN_CONTINUE;
                 break;
         }
-
+		m_ai->TellMaster("after dmg rot");
         // Shadow bolt is common to all specs
         if (SHADOW_BOLT && m_ai->In_Reach(pTarget, SHADOW_BOLT) && CastSpell(SHADOW_BOLT, pTarget))
             return RETURN_CONTINUE;
 
         // Default: shoot with wand
         return CastSpell(SHOOT, pTarget);
-
+		m_ai->TellMaster("error");
         return RETURN_NO_ACTION_OK;
 
         //if (DRAIN_LIFE && LastSpellAffliction < 4 && !pTarget->HasAura(DRAIN_SOUL) && !pTarget->HasAura(DRAIN_LIFE) && !pTarget->HasAura(DRAIN_MANA) && m_ai->GetHealthPercent() <= 70)

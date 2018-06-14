@@ -161,27 +161,42 @@ CombatManeuverReturns PlayerbotHunterAI::DoFirstCombatManeuverPVP(Unit* /*pTarge
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotHunterAI::DoNextCombatManeuver(Unit* pTarget)
+
+
+CombatManeuverReturns PlayerbotHunterAI::DoAOETask(Unit* pTarget)
 {
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
 
-    return RETURN_NO_ACTION_ERROR;
+	if (pTarget)
+	{
+
+		if (m_ai->In_Reach(pTarget, VOLLEY))
+		{
+
+			if (VOLLEY && !pTarget->HasAura(VOLLEY) && m_bot->IsSpellReady(VOLLEY))
+			{
+				m_ai->CastSpell(VOLLEY, *pTarget);
+				// m_ai->CastSpell(VOLLEY);
+				 return RETURN_CONTINUE;
+			}
+		}
+		else
+		{
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
 }
 
 CombatManeuverReturns PlayerbotHunterAI::DoNextCombatManeuverPVE(Unit* pTarget)
@@ -275,17 +290,26 @@ CombatManeuverReturns PlayerbotHunterAI::DoNextCombatManeuverPVE(Unit* pTarget)
     // If below ranged combat distance and bot is not attacked by target
     // make it flee from target for a few seconds to get in ranged distance again
     // Do not do it if passive or stay orders.
-    if (pVictim != m_bot && m_bot->GetCombatDistance(pTarget, true) <= 8.0f &&
-            !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_PASSIVE) &&
-            (m_bot->GetPlayerbotAI()->GetMovementOrder() != PlayerbotAI::MOVEMENT_STAY))
-    {
-        m_ai->InterruptCurrentCastingSpell();
-        m_ai->SetIgnoreUpdateTime(2);
-        m_bot->GetMotionMaster()->Clear(false);
-        m_bot->GetMotionMaster()->MoveFleeing(pTarget, 2);
-        return RETURN_CONTINUE;
-    }
-
+    //if (pVictim != m_bot && m_bot->GetCombatDistance(pTarget, true) <= 8.0f &&
+    //        !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_PASSIVE) &&
+    //        (m_bot->GetPlayerbotAI()->GetMovementOrder() != PlayerbotAI::MOVEMENT_STAY))
+    //{
+    //    m_ai->InterruptCurrentCastingSpell();
+    //    m_ai->SetIgnoreUpdateTime(2);
+    //    m_bot->GetMotionMaster()->Clear(false);
+    //    m_bot->GetMotionMaster()->MoveFleeing(pTarget, 2);
+    //    return RETURN_CONTINUE;
+    //}
+	float target_x, target_y, target_z;
+	pTarget->GetPosition(target_x, target_y, target_z);
+	if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(1);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange + 2.0f, pTarget, target_x, target_y, target_z);
+		return RETURN_CONTINUE;
+	}
     // damage spells
     if (m_ai->GetCombatStyle() == PlayerbotAI::COMBAT_RANGED)
     {

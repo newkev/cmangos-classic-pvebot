@@ -44,6 +44,8 @@ enum JOB_TYPE
     JOB_MANAONLY = 0x10  // for buff checking (NOTE: this means any with powertype mana AND druids (who may be shifted but still have mana)
 };
 
+
+
 struct heal_priority
 {
     Player* p;
@@ -65,6 +67,7 @@ class MANGOS_DLL_SPEC PlayerbotClassAI
         virtual CombatManeuverReturns DoNextCombatManeuver(Unit*);
         bool Pull() { DEBUG_LOG("[PlayerbotAI]: Warning: Using PlayerbotClassAI::Pull() rather than class specific function"); return false; }
         bool Neutralize() { DEBUG_LOG("[PlayerbotAI]: Warning: Using PlayerbotClassAI::Neutralize() rather than class specific function"); return false; }
+		bool CastAOE() { DEBUG_LOG("[PlayerbotAI]: Warning: Using PlayerbotClassAI::Neutralize() rather than class specific function"); return false; }
 
         // all non combat actions go here, ex buffs, heals, rezzes
         virtual void DoNonCombatActions();
@@ -80,12 +83,17 @@ class MANGOS_DLL_SPEC PlayerbotClassAI
         void SetWait(uint8 t) { m_WaitUntil = m_ai->CurrentTime() + t; }
         void ClearWait() { m_WaitUntil = 0; }
         //void SetWaitUntil(time_t t) { m_WaitUntil = t; }
-
+	
     protected:
         virtual CombatManeuverReturns DoFirstCombatManeuverPVE(Unit*);
         virtual CombatManeuverReturns DoNextCombatManeuverPVE(Unit*);
         virtual CombatManeuverReturns DoFirstCombatManeuverPVP(Unit*);
         virtual CombatManeuverReturns DoNextCombatManeuverPVP(Unit*);
+
+		virtual CombatManeuverReturns DoManaDrainTask(Unit*);
+		virtual CombatManeuverReturns DoTankTask(Unit*);
+		virtual CombatManeuverReturns DoNeutralizeTask(Unit*);
+		virtual CombatManeuverReturns DoAOETask(Unit*);
 
         CombatManeuverReturns CastSpellNoRanged(uint32 nextAction, Unit* pTarget);
         CombatManeuverReturns CastSpellWand(uint32 nextAction, Unit* pTarget, uint32 SHOOT);
@@ -97,12 +105,10 @@ class MANGOS_DLL_SPEC PlayerbotClassAI
         Player* GetResurrectionTarget(JOB_TYPE type = JOB_ALL, bool bMustBeOOC = true);
         JOB_TYPE GetTargetJob(Player* target);
 
-        bool FleeFromAoEIfCan(uint32 spellId, Unit* pTarget);
-        bool FleeFromTrapGOIfCan(uint32 goEntry, Unit* pTarget);
-        bool FleeFromNpcWithAuraIfCan(uint32 NpcEntry, uint32 spellId, Unit* pTarget);
-        bool FleeFromPointIfCan(uint32 radius, Unit* pTarget, float x0, float y0, float z0, float forcedAngle = 0.0f);
-
+ 
+	
         // These values are used in GetHealTarget and can be overridden per class (to accomodate healing spell health checks)
+
         uint8 m_MinHealthPercentTank;
         uint8 m_MinHealthPercentHealer;
         uint8 m_MinHealthPercentDPS;

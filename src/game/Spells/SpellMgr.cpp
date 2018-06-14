@@ -1633,7 +1633,8 @@ void SpellMgr::LoadSpellChains()
     }
 
     // load custom case
-    QueryResult* result = WorldDatabase.Query("SELECT spell_id, prev_spell, first_spell, rank, req_spell FROM spell_chain");
+    //QueryResult* result = WorldDatabase.Query("SELECT spell_id, prev_spell, first_spell, rank, req_spell FROM mangos.spell_chain");
+	QueryResult* result = WorldDatabase.Query("SELECT * FROM mangos.spell_chain");
     if (!result)
     {
         BarGoLink bar(1);

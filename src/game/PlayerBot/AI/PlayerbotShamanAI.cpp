@@ -94,6 +94,7 @@ PlayerbotShamanAI::PlayerbotShamanAI(Player* const master, Player* const bot, Pl
     TREMOR_TOTEM_EFFECT         = m_ai->initSpell(TREMOR_TOTEM_EFFECT_1);
     STONECLAW_EFFECT            = m_ai->initSpell(STONECLAW_EFFECT_1);
     EARTHBIND_EFFECT            = m_ai->initSpell(EARTHBIND_EFFECT_1);
+	MANA_TIDE_EFFECT = m_ai->initSpell(MANA_TIDE_EFFECT_1);
 }
 
 PlayerbotShamanAI::~PlayerbotShamanAI() {}
@@ -153,28 +154,6 @@ CombatManeuverReturns PlayerbotShamanAI::DoFirstCombatManeuverPVP(Unit* /*pTarge
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotShamanAI::DoNextCombatManeuver(Unit* pTarget)
-{
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
-
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
-
-    return RETURN_NO_ACTION_ERROR;
-}
 
 CombatManeuverReturns PlayerbotShamanAI::DoNextCombatManeuverPVE(Unit* pTarget)
 {
@@ -182,6 +161,7 @@ CombatManeuverReturns PlayerbotShamanAI::DoNextCombatManeuverPVE(Unit* pTarget)
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
 
     uint32 spec = m_bot->GetSpec();
+	Unit* pVictim = pTarget->getVictim();
 
     // Make sure healer stays put, don't even melee (aggro) if in range.
     if (m_ai->IsHealer() && m_ai->GetCombatStyle() != PlayerbotAI::COMBAT_RANGED)
@@ -202,6 +182,25 @@ CombatManeuverReturns PlayerbotShamanAI::DoNextCombatManeuverPVE(Unit* pTarget)
         if (HealPlayer(m_bot) & RETURN_CONTINUE)
             return RETURN_CONTINUE;
     }
+
+	float target_x, target_y, target_z;
+	pTarget->GetPosition(target_x, target_y, target_z);
+	if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(1);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange + 2.0f, pTarget, target_x, target_y, target_z);
+		return RETURN_CONTINUE;
+	}
+	if (m_bot->GetCombatDistance(pTarget, true) > 30.0f)
+	{
+		m_ai->InterruptCurrentCastingSpell();
+		m_ai->SetIgnoreUpdateTime(2);
+		m_bot->GetMotionMaster()->Clear(false);
+		m_bot->GetMotionMaster()->MoveFollow(pTarget, 28.5f, m_bot->GetOrientation());
+		return RETURN_CONTINUE;
+	}
 
     // Damage Spells
     DropTotems();
@@ -317,7 +316,9 @@ void PlayerbotShamanAI::DropTotems()
     // Earth Totems
     if ((earth == nullptr) || (m_bot->GetDistance(earth) > 30))
     {
-        if (STRENGTH_OF_EARTH_TOTEM > 0 && m_ai->CastSpell(STRENGTH_OF_EARTH_TOTEM))
+		if (STONESKIN_TOTEM > 0 && m_ai->CastSpell(STONESKIN_TOTEM)) //für mana gruppe
+			return;
+        if (STRENGTH_OF_EARTH_TOTEM > 0 && m_ai->CastSpell(STRENGTH_OF_EARTH_TOTEM)) //für melee gruppe
             return;
     }
 
@@ -326,8 +327,11 @@ void PlayerbotShamanAI::DropTotems()
     {
         if (m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_RESIST_FROST && FROST_RESISTANCE_TOTEM > 0 && m_ai->CastSpell(FROST_RESISTANCE_TOTEM))
             return;
+
+		if (SEARING_TOTEM > 0 && m_ai->CastSpell(SEARING_TOTEM)) //für mana gruppe
+			return;
         // If the spec didn't take totem of wrath, use flametongue
-        else if ((spec != SHAMAN_SPEC_ELEMENTAL) && FLAMETONGUE_TOTEM > 0 && m_ai->CastSpell(FLAMETONGUE_TOTEM))
+        if ((spec != SHAMAN_SPEC_ELEMENTAL) && FLAMETONGUE_TOTEM > 0 && m_ai->CastSpell(FLAMETONGUE_TOTEM))
             return;
     }
 
@@ -351,10 +355,13 @@ void PlayerbotShamanAI::DropTotems()
     // Water Totems
     if ((water == nullptr) || (m_bot->GetDistance(water) > 30))
     {
-        if (m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_RESIST_FIRE && FIRE_RESISTANCE_TOTEM > 0 && m_ai->CastSpell(FIRE_RESISTANCE_TOTEM))
-            return;
-        else if (MANA_SPRING_TOTEM > 0 && m_ai->CastSpell(MANA_SPRING_TOTEM))
-            return;
+		if (!m_bot->HasAura(MANA_TIDE_EFFECT))
+		{
+			if (m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_RESIST_FIRE && FIRE_RESISTANCE_TOTEM > 0 && m_ai->CastSpell(FIRE_RESISTANCE_TOTEM))
+				return;
+			else if (MANA_SPRING_TOTEM > 0 && m_ai->CastSpell(MANA_SPRING_TOTEM))
+				return;
+		}
     }
 
     /*if (EARTH_ELEMENTAL_TOTEM > 0 && m_ai->CastSpell(EARTH_ELEMENTAL_TOTEM))

@@ -79,6 +79,9 @@ PlayerbotPaladinAI::PlayerbotPaladinAI(Player* const master, Player* const bot, 
 
 PlayerbotPaladinAI::~PlayerbotPaladinAI() {}
 
+
+
+
 CombatManeuverReturns PlayerbotPaladinAI::DoFirstCombatManeuver(Unit* pTarget)
 {
     // There are NPCs in BGs and Open World PvP, so don't filter this on PvP scenarios (of course if PvP targets anyone but tank, all bets are off anyway)
@@ -157,27 +160,68 @@ CombatManeuverReturns PlayerbotPaladinAI::DoFirstCombatManeuverPVP(Unit* /*pTarg
     return RETURN_NO_ACTION_OK;
 }
 
-CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuver(Unit* pTarget)
+
+
+CombatManeuverReturns PlayerbotPaladinAI::DoTankTask(Unit* pTarget)
 {
-    // Face enemy, make sure bot is attacking
-    m_ai->FaceTarget(pTarget);
 
-    switch (m_ai->GetScenarioType())
-    {
-        case PlayerbotAI::SCENARIO_PVP_DUEL:
-        case PlayerbotAI::SCENARIO_PVP_BG:
-        case PlayerbotAI::SCENARIO_PVP_ARENA:
-        case PlayerbotAI::SCENARIO_PVP_OPENWORLD:
-            return DoNextCombatManeuverPVP(pTarget);
-        case PlayerbotAI::SCENARIO_PVE:
-        case PlayerbotAI::SCENARIO_PVE_ELITE:
-        case PlayerbotAI::SCENARIO_PVE_RAID:
-        default:
-            return DoNextCombatManeuverPVE(pTarget);
-            break;
-    }
 
-    return RETURN_NO_ACTION_ERROR;
+	Unit* pVictim = pTarget->getVictim();
+
+	if (pVictim != m_bot)
+	{
+		return DoNextCombatManeuverPVE(pTarget);
+	}
+	else
+	{
+		float dis;
+		dis = m_bot->GetDistanceNoBoundingRadius(m_ai->m_fightx, m_ai->m_fighty, m_ai->m_fightz);
+		if (dis > 2)
+		{
+			m_bot->GetMotionMaster()->Clear(false);
+			m_ai->SetIgnoreUpdateTime(1);
+			m_bot->GetMotionMaster()->MovePoint(0, m_ai->m_fightx, m_ai->m_fighty, m_ai->m_fightz, true);
+			return RETURN_CONTINUE;
+		}
+		else
+		{
+			return DoNextCombatManeuverPVE(pTarget);
+		}
+	}
+}
+
+CombatManeuverReturns PlayerbotPaladinAI::DoAOETask(Unit* pTarget)
+{
+
+	if (pTarget)
+	{
+		m_ai->FaceTarget(pTarget);
+		if (m_ai->In_Reach(pTarget, CONSECRATION))
+		{
+
+			if (CONSECRATION && !pTarget->HasAura(CONSECRATION) && m_bot->IsSpellReady(CONSECRATION))
+			{
+				m_ai->CastSpell(CONSECRATION);
+				return RETURN_CONTINUE;
+			}
+		}
+		else
+		{
+
+
+			m_ai->SetIgnoreUpdateTime(2);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_bot->GetMotionMaster()->MoveFollow(pTarget, 9.0f, m_bot->GetOrientation());
+			return RETURN_CONTINUE;
+		}
+
+
+	}
+	else
+	{
+		m_ai->TellMaster("My Target does not exist!");
+	}
+	return RETURN_NO_ACTION_ERROR;
 }
 
 CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuverPVE(Unit* pTarget)
@@ -185,7 +229,7 @@ CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuverPVE(Unit* pTarget)
     if (!m_ai)  return RETURN_NO_ACTION_ERROR;
     if (!m_bot) return RETURN_NO_ACTION_ERROR;
     if (!pTarget) return RETURN_NO_ACTION_INVALIDTARGET;
-
+	Unit* pVictim = pTarget->getVictim();
     // damage spells
     uint32 spec = m_bot->GetSpec();
     std::ostringstream out;
@@ -195,6 +239,35 @@ CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuverPVE(Unit* pTarget)
         m_ai->SetCombatStyle(PlayerbotAI::COMBAT_RANGED);
     else if (!m_ai->IsHealer() && m_ai->GetCombatStyle() != PlayerbotAI::COMBAT_MELEE)
         m_ai->SetCombatStyle(PlayerbotAI::COMBAT_MELEE);
+
+	bool meleeReach = m_bot->CanReachWithMeleeAttack(pTarget);
+
+	
+	if (m_ai->GetCombatStyle() == PlayerbotAI::COMBAT_RANGED)
+	{
+		float target_x, target_y, target_z;
+		pTarget->GetPosition(target_x, target_y, target_z);
+		if (pVictim != m_bot && m_bot->GetDistanceNoBoundingRadius(target_x, target_y, target_z) <= m_ai->m_MinRange)
+		{
+			m_ai->InterruptCurrentCastingSpell();
+			m_ai->SetIgnoreUpdateTime(1);
+			m_bot->GetMotionMaster()->Clear(false);
+			m_ai->FleeFromMonsterIfCan(m_ai->m_MinRange + 2.0f, pTarget, target_x, target_y, target_z);
+			return RETURN_CONTINUE;
+		}
+	}
+
+	if (!meleeReach)
+	{
+		if (m_ai->GetCombatStyle() == PlayerbotAI::COMBAT_MELEE)
+		{
+			//m_ai->TellMaster("trying to get in range");
+			m_bot->GetMotionMaster()->Clear(true);
+			m_bot->GetMotionMaster()->MoveChase(pTarget);
+			return RETURN_CONTINUE;
+			//m_bot->GetMotionMaster()->MoveFollow(pTarget, 4.5f, m_bot->GetOrientation());
+		}
+	}
 
     // Emergency check: bot is about to die: use Divine Shield (first)
     // Use Divine Protection if Divine Shield is not available and bot is not tanking because of the pacify effect
@@ -226,34 +299,38 @@ CombatManeuverReturns PlayerbotPaladinAI::DoNextCombatManeuverPVE(Unit* pTarget)
             return RETURN_CONTINUE;
     }
 
-    //Used to determine if this bot has highest threat
-    Unit* newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE)(PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
-    if (newTarget && !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_TANK) && !m_ai->IsNeutralized(newTarget)) // TODO: && party has a tank
-    {
-        if (HealPlayer(m_bot) == RETURN_CONTINUE)
-            return RETURN_CONTINUE;
 
-        // Aggroed by an elite
-        if (m_ai->IsElite(newTarget))
-        {
-            // Try to stun the mob
-            if (HAMMER_OF_JUSTICE > 0 && m_ai->In_Reach(newTarget, HAMMER_OF_JUSTICE) && m_bot->IsSpellReady(HAMMER_OF_JUSTICE) && !newTarget->HasAura(HAMMER_OF_JUSTICE) && m_ai->CastSpell(HAMMER_OF_JUSTICE, *newTarget))
-                return RETURN_CONTINUE;
+	if (m_ai->m_Tasktype == TASK_NORMAL)
+	{
+		//Used to determine if this bot has highest threat
+		Unit* newTarget = m_ai->FindAttacker((PlayerbotAI::ATTACKERINFOTYPE)(PlayerbotAI::AIT_VICTIMSELF | PlayerbotAI::AIT_HIGHESTTHREAT), m_bot);
+		if (newTarget && !(m_ai->GetCombatOrder() & PlayerbotAI::ORDERS_TANK) && !m_ai->IsNeutralized(newTarget)) // TODO: && party has a tank
+		{
+			if (HealPlayer(m_bot) == RETURN_CONTINUE)
+				return RETURN_CONTINUE;
 
-            // Bot has low life: use divine powers to protect him/herself
-            if (m_ai->GetHealthPercent() < 15)
-            {
-                if (DIVINE_SHIELD > 0 && m_bot->IsSpellReady(DIVINE_SHIELD) && !m_bot->HasAura(DIVINE_SHIELD, EFFECT_INDEX_0) && !m_bot->HasAura(DIVINE_PROTECTION, EFFECT_INDEX_0) && !m_bot->HasAura(FORBEARANCE, EFFECT_INDEX_0) && m_ai->CastSpell(DIVINE_SHIELD, *m_bot))
-                    return RETURN_CONTINUE;
+			// Aggroed by an elite
+			if (m_ai->IsElite(newTarget))
+			{
+				// Try to stun the mob
+				if (HAMMER_OF_JUSTICE > 0 && m_ai->In_Reach(newTarget, HAMMER_OF_JUSTICE) && m_bot->IsSpellReady(HAMMER_OF_JUSTICE) && !newTarget->HasAura(HAMMER_OF_JUSTICE) && m_ai->CastSpell(HAMMER_OF_JUSTICE, *newTarget))
+					return RETURN_CONTINUE;
 
-                if (DIVINE_PROTECTION > 0 && m_bot->IsSpellReady(DIVINE_PROTECTION) && !m_bot->HasAura(DIVINE_SHIELD, EFFECT_INDEX_0) && !m_bot->HasAura(DIVINE_PROTECTION, EFFECT_INDEX_0) && !m_bot->HasAura(FORBEARANCE, EFFECT_INDEX_0) && m_ai->CastSpell(DIVINE_PROTECTION, *m_bot))
-                    return RETURN_CONTINUE;
-            }
+				// Bot has low life: use divine powers to protect him/herself
+				if (m_ai->GetHealthPercent() < 15)
+				{
+					if (DIVINE_SHIELD > 0 && m_bot->IsSpellReady(DIVINE_SHIELD) && !m_bot->HasAura(DIVINE_SHIELD, EFFECT_INDEX_0) && !m_bot->HasAura(DIVINE_PROTECTION, EFFECT_INDEX_0) && !m_bot->HasAura(FORBEARANCE, EFFECT_INDEX_0) && m_ai->CastSpell(DIVINE_SHIELD, *m_bot))
+						return RETURN_CONTINUE;
 
-            // Else: do nothing and pray for tank to pick aggro from mob
-            return RETURN_NO_ACTION_OK;
-        }
-    }
+					if (DIVINE_PROTECTION > 0 && m_bot->IsSpellReady(DIVINE_PROTECTION) && !m_bot->HasAura(DIVINE_SHIELD, EFFECT_INDEX_0) && !m_bot->HasAura(DIVINE_PROTECTION, EFFECT_INDEX_0) && !m_bot->HasAura(FORBEARANCE, EFFECT_INDEX_0) && m_ai->CastSpell(DIVINE_PROTECTION, *m_bot))
+						return RETURN_CONTINUE;
+				}
+
+				// Else: do nothing and pray for tank to pick aggro from mob
+				return RETURN_NO_ACTION_OK;
+			}
+		}
+	}
 
     // Damage rotation
     switch (spec)

@@ -36,6 +36,16 @@ class PlayerbotMgr;
 
 #define BOTLOOT_DISTANCE 75.0f
 
+enum TASK_TYPE
+{
+	TASK_NORMAL,
+	TASK_NEUTRALIZE,
+	TASK_TANK,
+	TASK_MANADRAIN,
+	TASK_RAID,
+	TASK_AOE
+};
+
 enum RacialTraits
 {
     BERSERKING_ALL                 = 26297,
@@ -255,7 +265,8 @@ class MANGOS_DLL_SPEC PlayerbotAI
         {
             MOVEMENT_NONE               = 0x00,
             MOVEMENT_FOLLOW             = 0x01,
-            MOVEMENT_STAY               = 0x02
+            MOVEMENT_STAY               = 0x02,
+	
         };
 
         enum TaskFlags
@@ -482,6 +493,10 @@ class MANGOS_DLL_SPEC PlayerbotAI
         //bool Follow(Player& player);
         void SendNotEquipList(Player& player);
 
+		TASK_TYPE m_Tasktype;
+		float m_fightx, m_fighty, m_fightz;
+		uint8  m_IconToWatch;
+		uint8  m_MinRange;
         uint8  m_DelayAttack;
         time_t m_DelayAttackInit;
         Unit* gPrimtarget;
@@ -544,6 +559,7 @@ class MANGOS_DLL_SPEC PlayerbotAI
         bool CastPull();
         bool GroupTankHoldsAggro();
         bool CastNeutralize();
+		
         void UpdateAttackerInfo();
         Unit* FindAttacker(ATTACKERINFOTYPE ait = AIT_NONE, Unit* victim = 0);
         uint32 GetAttackerCount() { return m_attackerInfo.size(); };
@@ -581,6 +597,12 @@ class MANGOS_DLL_SPEC PlayerbotAI
         bool Deposit(const uint32 itemid);
         void BankBalance();
 
+		bool FleeFromAoEIfCan(uint32 spellId, Unit* pTarget);
+		bool FleeFromTrapGOIfCan(uint32 goEntry, Unit* pTarget);
+		bool FleeFromNpcWithAuraIfCan(uint32 NpcEntry, uint32 spellId, Unit* pTarget);
+		bool FleeFromPointIfCan(uint32 radius, Unit* pTarget, float x0, float y0, float z0, float forcedAngle = 0.0f);
+		bool FleeFromMonsterIfCan(uint32 radius, Unit* pTarget, float x0, float y0, float z0);
+
     private:
         bool ExtractCommand(const std::string sLookingFor, std::string& text, bool bUseShort = false);
         // outsource commands for code clarity
@@ -589,6 +611,8 @@ class MANGOS_DLL_SPEC PlayerbotAI
         void _HandleCommandOrders(std::string& text, Player& fromPlayer);
         void _HandleCommandFollow(std::string& text, Player& fromPlayer);
         void _HandleCommandStay(std::string& text, Player& fromPlayer);
+		void _HandleCommandSet(std::string& text, Player& fromPlayer);
+		void _HandleCommandScatter(std::string& text, Player& fromPlayer);
         void _HandleCommandAttack(std::string& text, Player& fromPlayer);
         void _HandleCommandPull(std::string& text, Player& fromPlayer);
         void _HandleCommandNeutralize(std::string& text, Player& fromPlayer);
